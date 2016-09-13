@@ -5,7 +5,7 @@
 ## Use it
 
 ```scala
-resolvers += "ReactiveCouchbase repository" at "https://raw.githubusercontent.com/mathieuancelin/simple-elastic-client/master/snapshots"
+resolvers += "simple-elastic-client repository" at "https://raw.githubusercontent.com/mathieuancelin/simple-elastic-client/master/snapshots"
 libraryDependencies += "org.reactivecouchbase" %% "simple-elastic-client" % "1.0-SNAPSHOT"
 ```
 
