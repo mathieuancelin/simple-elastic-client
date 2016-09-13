@@ -24,7 +24,7 @@ object MyApp extends App {
   implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
 
   val values = for {
-    client      <- ElasticClient.remote("127.0.0.1:9200" :: "127.0.0.2:9200" :: "127.0.0.3:9200" :: Nil).future
+    client      <- ElasticClient.remote("127.0.0.1:9200" :: "127.0.0.2:9200" :: Nil).future
     // or use local client
     localClient <- ElasticClient.local
     search      <- client.search("events-*")(Json.obj())
@@ -51,10 +51,13 @@ object MyApp extends App {
 ```scala
 trait ElasticClient {
   def future: Future[ElasticClient]
+
   def health(): Future[ElasticResponse]
   def stats(idxs: Seq[String] = Seq.empty[String])(implicit ec: ExecutionContext): Future[ElasticResponse]
+
   def count(indexes: Seq[String], types: Seq[String])(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def count(index: String, typ: String)(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse]
+
   def delete(index: String, typ: String, id: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def delete(index: String, typ: String)(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def get(index: String, typ: String, id: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
@@ -63,16 +66,21 @@ trait ElasticClient {
   def search(index: String, typ: Option[String] = None)(query: JsObject, params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def uriSearch(index: String, typ: Option[String] = None)(params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def suggest(index: String)(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse]
+
   def bulk(index: Option[String], typ: Option[String], operations: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse]
+
   def createIndex(index: String)(settings: Option[JsObject])(implicit ec: ExecutionContext): Future[ElasticResponse]
   def deleteIndex(index: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def refresh(index: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def flush(index: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
+
   def mapping(indexes: Seq[String], types: Seq[String])(implicit ec: ExecutionContext): Future[ElasticResponse]
   def putMapping(indexes: Seq[String], typ: String, ignoreConflicts: Boolean)(mapping: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def putTemplate(index: String)(template: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse]
+
   def template(index: String, name: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def deleteTemplate(index: String, name: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
+
   def createAlias(actions: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def deleteAlias(index: String, name: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
   def alias(index: String, name: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
