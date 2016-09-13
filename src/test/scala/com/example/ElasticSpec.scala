@@ -2,7 +2,7 @@ package com.example
 
 import java.util.concurrent.Executors
 
-import org.reactivecouchbase.elastic.{ElasticClient, Utils}
+import org.reactivecouchbase.elastic.ElasticClient
 import org.scalatest._
 import play.api.libs.json.Json
 
