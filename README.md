@@ -34,8 +34,8 @@ class SimpleElasticClientSpec extends FlatSpec with Matchers {
       // cli <- ElasticClient.remote("node1.elastic.foo:9200" :: "node2.elastic.foo:9200" :: Nil).liftable
       _      <- client.createIndex("events-2016.09.13")(None)
       events <- (client / "events-2016.09.13" / "event").liftable
-      _      <- events.index(Some("AVciusDsj6Wd5pYs2q3r"), true)(Json.obj("Hello" -> "World"))
-      _      <- events.index(Some("AVciusDsj6Wd5pYs2q32"), true)(Json.obj("Goodbye" -> "Here"))
+      _      <- events.indexWithId("AVciusDsj6Wd5pYs2q3r", true)(Json.obj("Hello" -> "World"))
+      _      <- events.indexWithId("AVciusDsj6Wd5pYs2q32", true)(Json.obj("Goodbye" -> "Here"))
       _      <- Timeout.timeout(Duration("2s"))
       resp   <- events get "AVciusDsj6Wd5pYs2q3r"
       resp2  <- events get "AVciusDsj6Wd5pYs2q32"
