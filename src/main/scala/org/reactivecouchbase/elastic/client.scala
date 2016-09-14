@@ -223,6 +223,9 @@ class SelectedIndex(index: String, cli: ElasticClient) {
 class SelectedType(index: String, typ: String, cli: ElasticClient) {
   def future: Future[SelectedType] = Future.successful(this)
 
+  def selectObject(id: String): SelectedObject = new SelectedObject(index, typ, id, cli)
+  def /(id: String): SelectedObject = selectObject(id)
+
   def count(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.count(index, typ)(query)(ec)
   def delete(id: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.delete(index, typ, id)(ec)
   def delete(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.delete(index, typ)(query)(ec)
@@ -244,4 +247,12 @@ class SelectedType(index: String, typ: String, cli: ElasticClient) {
   def deleteTemplate(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteTemplate(index, name)(ec)
   def deleteAlias(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteAlias(index, name)(ec)
   def alias(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.alias(index, name)(ec)
+}
+
+class SelectedObject(index: String, typ: String, id: String, cli: ElasticClient) {
+  def future: Future[SelectedObject] = Future.successful(this)
+
+  def delete()(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.delete(index, typ, id)(ec)
+  def get()(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.get(index, typ, id)(ec)
+  def update(doc: JsValue, refresh: Boolean = false)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, Some(id), refresh)(doc)(ec)
 }

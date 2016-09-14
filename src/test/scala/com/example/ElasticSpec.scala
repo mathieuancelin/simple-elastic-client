@@ -33,11 +33,11 @@ class ElasticSpec extends FlatSpec with Matchers {
       client <- ElasticClient.local(port).future
       _      <- client.createIndex("events-2016.09.13")(None)
       events <- (client / "events-2016.09.13" / "event").future
-      _      <- events.indexWithId("AVciusDsj6Wd5pYs2q3r", true)(Json.obj("Hello" -> "World"))
-      _      <- events.indexWithId("AVciusDsj6Wd5pYs2q32", true)(Json.obj("Goodbye" -> "Here"))
+      _      <- events.indexWithId("AVciusDsj6Wd5pYs2q3r", refresh = true)(Json.obj("Hello" -> "World"))
+      _      <- events.indexWithId("AVciusDsj6Wd5pYs2q32", refresh = true)(Json.obj("Goodbye" -> "Here"))
       _      <- Timeout.timeout(Duration("2s"))
-      resp   <- events get "AVciusDsj6Wd5pYs2q3r"
-      resp2  <- events get "AVciusDsj6Wd5pYs2q32"
+      resp   <- events / "AVciusDsj6Wd5pYs2q3r" get()
+      resp2  <- events / "AVciusDsj6Wd5pYs2q32" get()
       search <- client.search("events-*")(Json.obj())
       items  <- search.future.hitsSeq
       doc    <- resp.future.raw
