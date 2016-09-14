@@ -30,19 +30,19 @@ class SimpleElasticClientSpec extends FlatSpec with Matchers {
     implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
 
     val values = for {
-      client <- ElasticClient.local(port).liftable
-      // cli <- ElasticClient.remote("node1.elastic.foo:9200" :: "node2.elastic.foo:9200" :: Nil).liftable
+      client <- ElasticClient.local(port).future
+      // cli <- ElasticClient.remote("node1.elastic.foo:9200" :: "node2.elastic.foo:9200" :: Nil).future
       _      <- client.createIndex("events-2016.09.13")(None)
-      events <- (client / "events-2016.09.13" / "event").liftable
+      events <- (client / "events-2016.09.13" / "event").future
       _      <- events.indexWithId("AVciusDsj6Wd5pYs2q3r", true)(Json.obj("Hello" -> "World"))
       _      <- events.indexWithId("AVciusDsj6Wd5pYs2q32", true)(Json.obj("Goodbye" -> "Here"))
       _      <- Timeout.timeout(Duration("2s"))
       resp   <- events get "AVciusDsj6Wd5pYs2q3r"
       resp2  <- events get "AVciusDsj6Wd5pYs2q32"
       search <- client.search("events-*")(Json.obj())
-      items  <- search.liftable.hitsSeq
-      doc    <- resp.liftable.raw
-      doc2   <- resp2.liftable.raw
+      items  <- search.future.hitsSeq
+      doc    <- resp.future.raw
+      doc2   <- resp2.future.raw
     } yield (items, doc, doc2, stats, health)
 
     val (items, doc, doc2) = Await.result(values, Duration("10s"))
@@ -61,7 +61,6 @@ class SimpleElasticClientSpec extends FlatSpec with Matchers {
 ```scala
 trait ElasticClient {
   def future: Future[ElasticClient]
-  def liftable: Future[ElasticClient]
 
   def selectIndex(index: String): SelectedIndex
   def /(index: String): SelectedIndex
@@ -106,7 +105,6 @@ trait ElasticClient {
 ```scala
 trait ElasticResponse {
   def future: AsyncElasticResponse
-  def liftable: AsyncElasticResponse
   def isError: Boolean
   def map[T](f: JsValue => T): T
   def mapHits[T](f: Reads[T]): Seq[T]

@@ -13,7 +13,6 @@ case class ElasticResponseFailure(error: JsObject) extends ElasticResponseResult
 
 case class ElasticResponse(raw: JsValue, underlying: Response) {
   def future: AsyncElasticResponse = AsyncElasticResponse(this)
-  def liftable: AsyncElasticResponse = AsyncElasticResponse(this)
   def isError: Boolean = (raw \ "error").toOption.isDefined
   def map[T](f: JsValue => T): T = f(raw)
   def mapHits[T](f: Reads[T]): Seq[T] = (raw \ "hits" \ "hits").as[JsArray].value.map(i => f.reads(i)).filter(_.isSuccess).map(_.get)
@@ -48,7 +47,6 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
   val httpClient = Http.hosts(hosts)
 
   def future: Future[ElasticClient] = Future.successful(this)
-  def liftable: Future[ElasticClient] = Future.successful(this)
 
   // Tools
 
@@ -204,7 +202,6 @@ object ElasticClient {
 
 class SelectedIndex(index: String, cli: ElasticClient) {
   def future: Future[SelectedIndex] = Future.successful(this)
-  def liftable: Future[SelectedIndex] = Future.successful(this)
 
   def selectType(typ: String): SelectedType = new SelectedType(index, typ, cli)
   def /(typ: String): SelectedType = selectType(typ)
@@ -225,7 +222,6 @@ class SelectedIndex(index: String, cli: ElasticClient) {
 
 class SelectedType(index: String, typ: String, cli: ElasticClient) {
   def future: Future[SelectedType] = Future.successful(this)
-  def liftable: Future[SelectedType] = Future.successful(this)
 
   def count(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.count(index, typ)(query)(ec)
   def delete(id: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.delete(index, typ, id)(ec)

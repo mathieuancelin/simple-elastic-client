@@ -30,18 +30,18 @@ class ElasticSpec extends FlatSpec with Matchers {
     implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
 
     val values = for {
-      client <- ElasticClient.local(port).liftable
+      client <- ElasticClient.local(port).future
       _      <- client.createIndex("events-2016.09.13")(None)
-      events <- (client / "events-2016.09.13" / "event").liftable
+      events <- (client / "events-2016.09.13" / "event").future
       _      <- events.indexWithId("AVciusDsj6Wd5pYs2q3r", true)(Json.obj("Hello" -> "World"))
       _      <- events.indexWithId("AVciusDsj6Wd5pYs2q32", true)(Json.obj("Goodbye" -> "Here"))
       _      <- Timeout.timeout(Duration("2s"))
       resp   <- events get "AVciusDsj6Wd5pYs2q3r"
       resp2  <- events get "AVciusDsj6Wd5pYs2q32"
       search <- client.search("events-*")(Json.obj())
-      items  <- search.liftable.hitsSeq
-      doc    <- resp.liftable.raw
-      doc2   <- resp2.liftable.raw
+      items  <- search.future.hitsSeq
+      doc    <- resp.future.raw
+      doc2   <- resp2.future.raw
       stats  <- client.stats()
       health <- client.health()
     } yield (items, doc, doc2, stats, health)
