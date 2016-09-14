@@ -11,7 +11,6 @@ libraryDependencies += "org.reactivecouchbase" %% "simple-elastic-client" % "1.0
 ```
 
 ```scala
-
 import java.util.concurrent.Executors
 
 import org.reactivecouchbase.elastic._
@@ -20,32 +19,6 @@ import play.api.libs.json.Json
 
 import scala.concurrent.duration.Duration
 import scala.concurrent._
-
-object MyApp extends App {
-
-  implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
-
-  val values = for {
-    client      <- ElasticClient.remote("127.0.0.1:9200" :: "127.0.0.2:9200" :: Nil).liftable
-    // or use local client
-    localClient <- ElasticClient.local
-    search      <- client.search("events-*")(Json.obj())
-    items       <- search.liftable.hitsSeq
-    resp   <- client / "events-2016.09.13" / "event" get "AVciusDsj6Wd5pYs2q3r"
-    doc         <- resp.liftable.raw
-    stats       <- client.stats()
-    health      <- client.health()
-  } yield (items, doc, stats, health)
-
-  val (items, doc, stats, health) = Await.result(values, Duration("10s"))
-
-  println(items.map(Json.prettyPrint).mkString("\n"))
-  println(Json.prettyPrint(doc))
-  println(Json.prettyPrint(stats.raw))
-  println(Json.prettyPrint(health.raw))
-
-}
-
 
 class SimpleElasticClientSpec extends FlatSpec with Matchers {
 
@@ -81,7 +54,6 @@ class SimpleElasticClientSpec extends FlatSpec with Matchers {
     elastic.stop()
   }
 }
-
 ```
 
 ## Client API
