@@ -31,7 +31,7 @@ class SimpleElasticClientSpec extends FlatSpec with Matchers {
 
     val values = for {
       client <- ElasticClient.local(port).liftable
-      // client      <- ElasticClient.remote("127.0.0.1:9200" :: "127.0.0.2:9200" :: Nil).liftable
+      // cli <- ElasticClient.remote("node1.elastic.foo:9200" :: "node2.elastic.foo:9200" :: Nil).liftable
       _      <- client.createIndex("events-2016.09.13")(None)
       index  <- (client / "events-2016.09.13" / "event").liftable
       _      <- index.index(Some("AVciusDsj6Wd5pYs2q3r"), true)(Json.obj("Hello" -> "World"))
