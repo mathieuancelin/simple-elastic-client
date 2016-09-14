@@ -33,12 +33,12 @@ class SimpleElasticClientSpec extends FlatSpec with Matchers {
       client <- ElasticClient.local(port).liftable
       // cli <- ElasticClient.remote("node1.elastic.foo:9200" :: "node2.elastic.foo:9200" :: Nil).liftable
       _      <- client.createIndex("events-2016.09.13")(None)
-      index  <- (client / "events-2016.09.13" / "event").liftable
-      _      <- index.index(Some("AVciusDsj6Wd5pYs2q3r"), true)(Json.obj("Hello" -> "World"))
-      _      <- index.index(Some("AVciusDsj6Wd5pYs2q32"), true)(Json.obj("Goodbye" -> "Here"))
+      events <- (client / "events-2016.09.13" / "event").liftable
+      _      <- events.index(Some("AVciusDsj6Wd5pYs2q3r"), true)(Json.obj("Hello" -> "World"))
+      _      <- events.index(Some("AVciusDsj6Wd5pYs2q32"), true)(Json.obj("Goodbye" -> "Here"))
       _      <- Timeout.timeout(Duration("2s"))
-      resp   <- index get "AVciusDsj6Wd5pYs2q3r"
-      resp2  <- index get "AVciusDsj6Wd5pYs2q32"
+      resp   <- events get "AVciusDsj6Wd5pYs2q3r"
+      resp2  <- events get "AVciusDsj6Wd5pYs2q32"
       search <- client.search("events-*")(Json.obj())
       items  <- search.liftable.hitsSeq
       doc    <- resp.liftable.raw
@@ -61,6 +61,10 @@ class SimpleElasticClientSpec extends FlatSpec with Matchers {
 ```scala
 trait ElasticClient {
   def future: Future[ElasticClient]
+  def liftable: Future[ElasticClient]
+
+  def selectIndex(index: String): SelectedIndex
+  def /(index: String): SelectedIndex
 
   def health(): Future[ElasticResponse]
   def stats(idxs: Seq[String] = Seq.empty[String])(implicit ec: ExecutionContext): Future[ElasticResponse]
@@ -102,6 +106,7 @@ trait ElasticClient {
 ```scala
 trait ElasticResponse {
   def future: AsyncElasticResponse
+  def liftable: AsyncElasticResponse
   def isError: Boolean
   def map[T](f: JsValue => T): T
   def mapHits[T](f: Reads[T]): Seq[T]
