@@ -22,7 +22,7 @@ import scala.concurrent._
 
 class SimpleElasticClientSpec extends FlatSpec with Matchers {
 
-  "SimpleElasticClientSpec" should "Work" in {
+  "SimpleElasticClient" should "Work" in {
 
     val port = Network.freePort
     val elastic = new EmbeddedElastic(Some(port))
