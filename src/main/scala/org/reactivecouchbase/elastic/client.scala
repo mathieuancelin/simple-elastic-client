@@ -13,6 +13,7 @@ case class ElasticResponseFailure(error: JsObject) extends ElasticResponseResult
 
 case class ElasticResponse(raw: JsValue, underlying: Response) {
   def future: AsyncElasticResponse = AsyncElasticResponse(this)
+  def liftable: AsyncElasticResponse = AsyncElasticResponse(this)
   def isError: Boolean = (raw \ "error").toOption.isDefined
   def map[T](f: JsValue => T): T = f(raw)
   def mapHits[T](f: Reads[T]): Seq[T] = (raw \ "hits" \ "hits").as[JsArray].value.map(i => f.reads(i)).filter(_.isSuccess).map(_.get)
@@ -47,6 +48,7 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
   val httpClient = Http.hosts(hosts)
 
   def future: Future[ElasticClient] = Future.successful(this)
+  def liftable: Future[ElasticClient] = Future.successful(this)
 
   // Tools
 
@@ -100,11 +102,14 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
   def get(index: String, typ: String)(query: JsObject)(implicit ec: ExecutionContext) =
     performRequest(s"/$index/$typ/_query", GET, Some(query))
 
+  def selectIndex(index: String): SelectedIndex = new SelectedIndex(index, this)
+  def /(index: String): SelectedIndex = selectIndex(index)
+
   def index(index: String, typ: String, id: Option[String], refresh: Boolean = false)(doc: JsValue)(implicit ec: ExecutionContext) = {
     val params = Seq(("refresh", if (refresh) "true" else "false"))
     id match {
-      case Some(i) => performRequest(s"/$index/$typ/$i", PUT, None, params)
-      case None => performRequest(s"/$index/$typ", POST, None, params)
+      case Some(i) => performRequest(s"/$index/$typ/$i", PUT, Some(doc), params)
+      case None => performRequest(s"/$index/$typ", POST, Some(doc), params)
     }
   }
 
@@ -118,7 +123,7 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
     performRequest(s"/$index/_suggest", POST, Some(query))
 
   // Bulk
-  def bulk(index: Option[String], typ: Option[String], operations: JsArray)(implicit ec: ExecutionContext) =
+  def bulk(index: Option[String], typ: Option[String])(operations: JsArray)(implicit ec: ExecutionContext) =
     performRequest(s"/${index.getOrElse("")}/${typ.getOrElse("")}/_bulk", POST, Some(operations))
 
   // Indexes
@@ -190,8 +195,56 @@ object ElasticClient {
   private val defaultTimeout = Duration("10s")
   private val defaultRetry = 5
   def local: ElasticClient = new ElasticClient(Seq("localhost:9200"), defaultTimeout, defaultRetry)
+  def local(port: Int): ElasticClient = new ElasticClient(Seq(s"localhost:$port"), defaultTimeout, defaultRetry)
   def remote(hosts: Seq[String]): ElasticClient = new ElasticClient(hosts, defaultTimeout, defaultRetry)
   def remote(hosts: Seq[String], timeout: Duration): ElasticClient = new ElasticClient(hosts, timeout, defaultRetry)
   def remote(hosts: Seq[String], retry: Int): ElasticClient = new ElasticClient(hosts, defaultTimeout, retry)
   def remote(hosts: Seq[String], timeout: Duration, retry: Int): ElasticClient = new ElasticClient(hosts, timeout, retry)
+}
+
+class SelectedIndex(index: String, cli: ElasticClient) {
+  def future: Future[SelectedIndex] = Future.successful(this)
+  def liftable: Future[SelectedIndex] = Future.successful(this)
+
+  def selectType(typ: String): SelectedType = new SelectedType(index, typ, cli)
+  def /(typ: String): SelectedType = selectType(typ)
+
+  def search(query: JsObject, params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.search(index, None)(query, params:_*)(ec)
+  def uriSearch(params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.uriSearch(index, None)(params:_*)(ec)
+  def suggest(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.suggest(index)(query)(ec)
+  def bulk(operations: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulk(Some(index), None)(operations)(ec)
+  def deleteIndex(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteIndex(index)(ec)
+  def refresh(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.refresh(index)(ec)
+  def flush(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.flush(index)(ec)
+  def putTemplate(index: String)(template: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.putTemplate(index)(template)(ec)
+  def template(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.template(index, name)(ec)
+  def deleteTemplate(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteTemplate(index, name)(ec)
+  def deleteAlias(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteAlias(index, name)(ec)
+  def alias(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.alias(index, name)(ec)
+}
+
+class SelectedType(index: String, typ: String, cli: ElasticClient) {
+  def future: Future[SelectedType] = Future.successful(this)
+  def liftable: Future[SelectedType] = Future.successful(this)
+
+  def count(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.count(index, typ)(query)(ec)
+  def delete(id: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.delete(index, typ, id)(ec)
+  def delete(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.delete(index, typ)(query)(ec)
+  def get(id: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.get(index, typ, id)(ec)
+  def get(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.get(index, typ)(query)(ec)
+  def index(id: Option[String], refresh: Boolean = false)(doc: JsValue)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, id, refresh)(doc)(ec)
+  def search(query: JsObject, params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.search(index, Some(typ))(query, params:_*)(ec)
+  def uriSearch(params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.uriSearch(index, Some(typ))(params:_*)(ec)
+  def suggest(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.suggest(index)(query)(ec)
+  def bulk(operations: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulk(Some(index), Some(typ))(operations)(ec)
+  def deleteIndex(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteIndex(index)(ec)
+  def refresh(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.refresh(index)(ec)
+  def flush(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.flush(index)(ec)
+  def mapping(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.mapping(Seq(index), Seq(typ))(ec)
+  def putMapping(ignoreConflicts: Boolean)(mapping: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.putMapping(Seq(index), typ, ignoreConflicts)(mapping)(ec)
+  def putTemplate(index: String)(template: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.putTemplate(index)(template)(ec)
+  def template(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.template(index, name)(ec)
+  def deleteTemplate(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteTemplate(index, name)(ec)
+  def deleteAlias(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteAlias(index, name)(ec)
+  def alias(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.alias(index, name)(ec)
 }

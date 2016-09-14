@@ -6,6 +6,7 @@
 
 ```scala
 resolvers += "simple-elastic-client repository" at "https://raw.githubusercontent.com/mathieuancelin/simple-elastic-client/master/snapshots"
+
 libraryDependencies += "org.reactivecouchbase" %% "simple-elastic-client" % "1.0-SNAPSHOT"
 ```
 
@@ -13,25 +14,25 @@ libraryDependencies += "org.reactivecouchbase" %% "simple-elastic-client" % "1.0
 
 import java.util.concurrent.Executors
 
-import org.reactivecouchbase.elastic.{ElasticClient, Utils}
+import org.reactivecouchbase.elastic._
 import org.scalatest._
 import play.api.libs.json.Json
 
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent._
 
 object MyApp extends App {
 
   implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
 
   val values = for {
-    client      <- ElasticClient.remote("127.0.0.1:9200" :: "127.0.0.2:9200" :: Nil).future
+    client      <- ElasticClient.remote("127.0.0.1:9200" :: "127.0.0.2:9200" :: Nil).liftable
     // or use local client
     localClient <- ElasticClient.local
     search      <- client.search("events-*")(Json.obj())
-    items       <- search.future.hitsSeq
-    resp        <- client.get("events-2016.09.13", "event", "AVciusDsj6Wd5pYs2q3r")
-    doc         <- resp.future.raw
+    items       <- search.liftable.hitsSeq
+    resp   <- client / "events-2016.09.13" / "event" get "AVciusDsj6Wd5pYs2q3r"
+    doc         <- resp.liftable.raw
     stats       <- client.stats()
     health      <- client.health()
   } yield (items, doc, stats, health)
@@ -43,6 +44,42 @@ object MyApp extends App {
   println(Json.prettyPrint(stats.raw))
   println(Json.prettyPrint(health.raw))
 
+}
+
+
+class SimpleElasticClientSpec extends FlatSpec with Matchers {
+
+  "SimpleElasticClientSpec" should "Work" in {
+
+    val port = Network.freePort
+    val elastic = new EmbeddedElastic(Some(port))
+
+    implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
+
+    val values = for {
+      client <- ElasticClient.local(port).liftable
+      // client      <- ElasticClient.remote("127.0.0.1:9200" :: "127.0.0.2:9200" :: Nil).liftable
+      _      <- client.createIndex("events-2016.09.13")(None)
+      index  <- (client / "events-2016.09.13" / "event").liftable
+      _      <- index.index(Some("AVciusDsj6Wd5pYs2q3r"), true)(Json.obj("Hello" -> "World"))
+      _      <- index.index(Some("AVciusDsj6Wd5pYs2q32"), true)(Json.obj("Goodbye" -> "Here"))
+      _      <- Timeout.timeout(Duration("2s"))
+      resp   <- index get "AVciusDsj6Wd5pYs2q3r"
+      resp2  <- index get "AVciusDsj6Wd5pYs2q32"
+      search <- client.search("events-*")(Json.obj())
+      items  <- search.liftable.hitsSeq
+      doc    <- resp.liftable.raw
+      doc2   <- resp2.liftable.raw
+    } yield (items, doc, doc2, stats, health)
+
+    val (items, doc, doc2) = Await.result(values, Duration("10s"))
+
+    (doc \ "_source" \ "Hello").as[String] should be("World")
+    (doc2 \ "_source" \ "Goodbye").as[String] should be("Here")
+    items.size should be(2)
+
+    elastic.stop()
+  }
 }
 
 ```
