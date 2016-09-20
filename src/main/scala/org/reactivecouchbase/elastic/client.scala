@@ -12,11 +12,15 @@ case class ElasticResponseSuccess(rawResponse: JsObject) extends ElasticResponse
 case class ElasticResponseFailure(error: JsObject) extends ElasticResponseResult
 
 case class ElasticResponse(raw: JsValue, underlying: Response) {
-  def future: AsyncElasticResponse = AsyncElasticResponse(this)
+  def future(): AsyncElasticResponse = AsyncElasticResponse(this)
   def isError: Boolean = (raw \ "error").toOption.isDefined
   def map[T](f: JsValue => T): T = f(raw)
   def mapHits[T](f: Reads[T]): Seq[T] = (raw \ "hits" \ "hits").as[JsArray].value.map(i => f.reads(i)).filter(_.isSuccess).map(_.get)
   def mapHits[T](f: Seq[JsValue] => Seq[T]): Seq[T] = f((raw \ "hits" \ "hits").as[JsArray].value)
+  def mapSingleHit[T](f: Reads[T]): Option[T] = (raw \ "hits" \ "hits").as[JsArray].value.headOption.flatMap(d => f.reads(d).asOpt)
+  def mapSingleHit[T](f: JsValue => T): Option[T] = (raw \ "hits" \ "hits").as[JsArray].value.headOption.map(f)
+  def mapFirstHit[T](f: Reads[T]): T = (raw \ "hits" \ "hits").as[JsArray].value.headOption.flatMap(d => f.reads(d).asOpt).get
+  def mapFirstHit[T](f: JsValue => T): T = (raw \ "hits" \ "hits").as[JsArray].value.headOption.map(f).get
   def hits: JsArray = (raw \ "hits" \ "hits").as[JsArray]
   def hitsSeq: Seq[JsValue] = (raw \ "hits" \ "hits").as[JsArray].value
   def fold[T](f: ElasticResponseResult => T): T = {
@@ -35,6 +39,10 @@ case class AsyncElasticResponse(response: ElasticResponse) {
   def flatMap[T](f: JsValue => Future[T]): Future[T] = f(response.raw)
   def mapHits[T](f: Reads[T]): Future[Seq[T]] = Future.successful(response.mapHits(f))
   def mapHits[T](f: Seq[JsValue] => Seq[T]): Future[Seq[T]] = Future.successful(response.mapHits(f))
+  def mapSingleHit[T](f: Reads[T]): Future[Option[T]] = Future.successful(response.mapSingleHit(f))
+  def mapSingleHit[T](f: JsValue => T): Future[Option[T]] = Future.successful(response.mapSingleHit(f))
+  def mapFirstHit[T](f: Reads[T]): Future[T] = Future.successful(response.mapSingleHit(f).get)
+  def mapFirstHit[T](f: JsValue => T): Future[T] = Future.successful(response.mapSingleHit(f).get)
   def flatMapHits[T](f: Seq[JsValue] => Seq[Future[T]])(implicit ec: ExecutionContext): Future[Seq[T]] = Future.sequence(response.mapHits(f))
   def hits: Future[JsArray] = Future.successful(response.hits)
   def hitsSeq: Future[Seq[JsValue]] = Future.successful(response.hitsSeq)
@@ -46,7 +54,7 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
   val logger = LoggerFactory.getLogger("ElasticClient")
   val httpClient = Http.hosts(hosts)
 
-  def future: Future[ElasticClient] = Future.successful(this)
+  def future(): Future[ElasticClient] = Future.successful(this)
 
   // Tools
 
@@ -115,7 +123,7 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
     performRequest(s"/$index/${typ.getOrElse("")}/_search", POST, Some(query), params)
 
   def uriSearch(index: String, typ: Option[String] = None)(params: (String, String)*)(implicit ec: ExecutionContext) =
-    performRequest(s"/$index/${typ.getOrElse("")}/_search", POST, None, params)
+    performRequest(s"/$index/${typ.getOrElse("")}/_search", GET, None, params)
 
   def suggest(index: String)(query: JsObject)(implicit ec: ExecutionContext) =
     performRequest(s"/$index/_suggest", POST, Some(query))
@@ -125,8 +133,10 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
     performRequest(s"/${index.getOrElse("")}/${typ.getOrElse("")}/_bulk", POST, Some(operations))
 
   // Indexes
-  def createIndex(index: String)(settings: Option[JsObject])(implicit ec: ExecutionContext) =
+  def putIndex(index: String, settings: Option[JsObject] = None)(implicit ec: ExecutionContext) =
     performRequest(s"/$index", PUT, settings)
+
+  def createIndex(index: String): IndexCreator = new IndexCreator(index, this)
 
   def deleteIndex(index: String)(implicit ec: ExecutionContext) =
     performRequest(s"/$index", DELETE, None)
@@ -141,8 +151,8 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
   def mapping(indexes: Seq[String], types: Seq[String])(implicit ec: ExecutionContext) =
     performRequest(s"/${indexes.mkString(",")}/_mapping/${types.mkString(",")}", GET, None)
 
-  def putMapping(indexes: Seq[String], typ: String, ignoreConflicts: Boolean)(mapping: JsObject)(implicit ec: ExecutionContext) =
-    performRequest(s"/${indexes.mkString(",")}/$typ/_mapping", PUT, Some(mapping), Seq("ignore_conflicts" -> ignoreConflicts.toString))
+  def putMapping(indexes: Seq[String], typ: String, ignoreConflicts: Boolean = false)(mapping: JsObject)(implicit ec: ExecutionContext) =
+    performRequest(s"/${indexes.mkString(",")}/_mapping/$typ", PUT, Some(mapping), Seq("ignore_conflicts" -> ignoreConflicts.toString))
 
   // Templates
   def putTemplate(index: String)(template: JsObject)(implicit ec: ExecutionContext) =
@@ -165,6 +175,11 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
     performRequest(s"/$index/_alias/$name", GET, None)
 
   private def performRequest(url: String, method: Method, payload: Option[JsValue], params: Seq[(String, String)] = Seq.empty[(String, String)])(implicit ec: ExecutionContext): Future[ElasticResponse] = {
+    val debugUrl = if (params.isEmpty) s"http://$$host:$$port$url" else s"http://$$host:$$port$url?${params.map(p => s"${p._1}=${p._2}").mkString("&")}"
+    payload match {
+      case Some(obj) => logger.debug(s"curl -X ${method.name} -H 'Content-Type: application/json' '$debugUrl' -d '${Json.prettyPrint(obj)}'")
+      case None      => logger.debug(s"curl -X ${method.name} '$debugUrl'")
+    }
     if (url.endsWith("_bulk")) {
       Utils.retry(retry) {
         httpClient
@@ -201,7 +216,7 @@ object ElasticClient {
 }
 
 class SelectedIndex(index: String, cli: ElasticClient) {
-  def future: Future[SelectedIndex] = Future.successful(this)
+  def future(): Future[SelectedIndex] = Future.successful(this)
 
   def selectType(typ: String): SelectedType = new SelectedType(index, typ, cli)
   def /(typ: String): SelectedType = selectType(typ)
@@ -221,7 +236,7 @@ class SelectedIndex(index: String, cli: ElasticClient) {
 }
 
 class SelectedType(index: String, typ: String, cli: ElasticClient) {
-  def future: Future[SelectedType] = Future.successful(this)
+  def future(): Future[SelectedType] = Future.successful(this)
 
   def selectObject(id: String): SelectedObject = new SelectedObject(index, typ, id, cli)
   def /(id: String): SelectedObject = selectObject(id)
@@ -231,7 +246,7 @@ class SelectedType(index: String, typ: String, cli: ElasticClient) {
   def delete(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.delete(index, typ)(query)(ec)
   def get(id: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.get(index, typ, id)(ec)
   def get(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.get(index, typ)(query)(ec)
-  def index(doc: JsValue, refresh: Boolean = false)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, None, refresh)(doc)(ec)
+  def index(doc: JsValue, refresh: Boolean = true)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, None, refresh)(doc)(ec)
   def indexWithId(id: String, refresh: Boolean = false)(doc: JsValue)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, Some(id), refresh)(doc)(ec)
   def search(query: JsObject, params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.search(index, Some(typ))(query, params:_*)(ec)
   def uriSearch(params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.uriSearch(index, Some(typ))(params:_*)(ec)
@@ -241,7 +256,8 @@ class SelectedType(index: String, typ: String, cli: ElasticClient) {
   def refresh(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.refresh(index)(ec)
   def flush(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.flush(index)(ec)
   def mapping(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.mapping(Seq(index), Seq(typ))(ec)
-  def putMapping(ignoreConflicts: Boolean)(mapping: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.putMapping(Seq(index), typ, ignoreConflicts)(mapping)(ec)
+  def putMapping(ignoreConflicts: Boolean = false)(mapping: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.putMapping(Seq(index), typ, ignoreConflicts)(mapping)(ec)
+  def putMapping(mapping: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.putMapping(Seq(index), typ, false)(mapping)(ec)
   def putTemplate(index: String)(template: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.putTemplate(index)(template)(ec)
   def template(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.template(index, name)(ec)
   def deleteTemplate(name: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteTemplate(index, name)(ec)
@@ -250,9 +266,14 @@ class SelectedType(index: String, typ: String, cli: ElasticClient) {
 }
 
 class SelectedObject(index: String, typ: String, id: String, cli: ElasticClient) {
-  def future: Future[SelectedObject] = Future.successful(this)
-
+  def future(): Future[SelectedObject] = Future.successful(this)
+  def index(doc: JsValue, refresh: Boolean = false)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, Some(id), refresh)(doc)(ec)
   def delete()(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.delete(index, typ, id)(ec)
   def get()(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.get(index, typ, id)(ec)
   def update(doc: JsValue, refresh: Boolean = false)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, Some(id), refresh)(doc)(ec)
+}
+
+class IndexCreator(index: String, cli: ElasticClient) {
+  def withNoSettings()(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.putIndex(index, None)(ec)
+  def withSettings(settings: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.putIndex(index, Some(settings))(ec)
 }

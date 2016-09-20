@@ -22,6 +22,39 @@ object Timeout {
 
 class ElasticSpec extends FlatSpec with Matchers {
 
+  "ElasticClient" should "work" in {
+
+    val port = Network.freePort
+    val embedded = new EmbeddedElastic(Some(port))
+
+    implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
+
+    val values = for {
+      client <- ElasticClient.local(port).future()
+      _      <- client createIndex "events-2016.09.13" withNoSettings()
+      events <- client / "events-2016.09.13" / "event" future()
+      _      <- events / "AVciusDsj6Wd5pYs2q3r" index Json.obj("Hello" -> "World")
+      _      <- events / "AVciusDsj6Wd5pYs2q32" index Json.obj("Goodbye" -> "Here")
+      _      <- Timeout.timeout(Duration("2s"))
+      resp   <- events / "AVciusDsj6Wd5pYs2q3r" get()
+      resp2  <- events / "AVciusDsj6Wd5pYs2q32" get()
+      search <- client.search("events-*")(Json.obj())
+      items  <- search.future().hitsSeq
+      doc    <- resp.future().raw
+      doc2   <- resp2.future().raw
+      stats  <- client.stats()
+      health <- client.health()
+    } yield (items, doc, doc2, stats, health)
+
+    val (items, doc, doc2, _, _) = Await.result(values, Duration("10s"))
+
+    (doc \ "_source" \ "Hello").as[String] should be("World")
+    (doc2 \ "_source" \ "Goodbye").as[String] should be("Here")
+    items.size should be(2)
+
+    embedded.stop()
+  }
+
   "ElasticClient" should "be able to search an ES server" in {
 
     val port = Network.freePort
@@ -30,33 +63,71 @@ class ElasticSpec extends FlatSpec with Matchers {
     implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
 
     val values = for {
-      client <- ElasticClient.local(port).future
-      _      <- client.createIndex("events-2016.09.13")(None)
-      events <- (client / "events-2016.09.13" / "event").future
-      _      <- events.indexWithId("AVciusDsj6Wd5pYs2q3r", refresh = true)(Json.obj("Hello" -> "World"))
-      _      <- events.indexWithId("AVciusDsj6Wd5pYs2q32", refresh = true)(Json.obj("Goodbye" -> "Here"))
-      _      <- Timeout.timeout(Duration("2s"))
-      resp   <- events / "AVciusDsj6Wd5pYs2q3r" get()
-      resp2  <- events / "AVciusDsj6Wd5pYs2q32" get()
-      search <- client.search("events-*")(Json.obj())
-      items  <- search.future.hitsSeq
-      doc    <- resp.future.raw
-      doc2   <- resp2.future.raw
-      stats  <- client.stats()
-      health <- client.health()
-    } yield (items, doc, doc2, stats, health)
+      client  <- ElasticClient.local(port).future()
+      _       <- client createIndex "places" withSettings Json.obj(
+        "settings" -> Json.obj(
+          "index" -> Json.obj(
+            "refresh_interval" -> "1s"
+          )
+        ),
+        "mappings" -> Json.obj(
+          "cities" -> Json.obj(
+            "properties" -> Json.obj(
+              "name" -> Json.obj(
+                "type" -> "string",
+                "index" -> "not_analyzed"
+              ),
+              "country" -> Json.obj(
+                "type" -> "string",
+                "index" -> "not_analyzed"
+              ),
+              "continent" -> Json.obj(
+                "type" -> "string",
+                "index" -> "not_analyzed"
+              ),
+              "status" -> Json.obj(
+                "type" -> "string",
+                "index" -> "not_analyzed"
+              )
+            )
+          )
+        )
+      )
+      cities  <- client / "places" / "cities" future()
+      _       <- cities index Json.obj(
+        "name"      -> "Glasgow",
+        "country"   -> "United Kingdom",
+        "continent" -> "Scotland",
+        "status"    -> "Such Wow"
+      )
+      _       <- cities index Json.obj(
+        "name"      -> "London",
+        "country"   -> "United Kingdom",
+        "continent" -> "Europe",
+        "status"    -> "Awesome"
+      )
+      _       <- Timeout.timeout(Duration("2s"))
+      lSearch <- cities search Json.obj("query" -> Json.obj("term" -> Json.obj("name" -> "London")))
+      gSearch <- cities search Json.obj("query" -> Json.obj("term" -> Json.obj("name" -> "Glasgow")))
+      london  <- lSearch.future().mapFirstHit(d => d \ "_source")
+      glasgow <- gSearch.future().mapFirstHit(d => d \ "_source")
+      all     <- cities search Json.obj() map (_.hitsSeq)
+    } yield (london, glasgow, all)
 
-    val (items, doc, doc2, stats, health) = Await.result(values, Duration("10s"))
-
-    // println(items.map(Json.prettyPrint).mkString("\n"))
-    // println(Json.prettyPrint(doc))
-    // println(Json.prettyPrint(stats.raw))
-    // println(Json.prettyPrint(health.raw))
+    val (london, glasgow, all) = Await.result(values, Duration("10s"))
 
     embedded.stop()
 
-    (doc \ "_source" \ "Hello").as[String] should be("World")
-    (doc2 \ "_source" \ "Goodbye").as[String] should be("Here")
-    items.size should be(2)
+    (london \ "name").as[String] should be("London")
+    (london \ "country").as[String] should be("United Kingdom")
+    (london \ "continent").as[String] should be("Europe")
+    (london \ "status").as[String] should be("Awesome")
+
+    (glasgow \ "name").as[String] should be("Glasgow")
+    (glasgow \ "country").as[String] should be("United Kingdom")
+    (glasgow \ "continent").as[String] should be("Scotland")
+    (glasgow \ "status").as[String] should be("Such Wow")
+
+    all.size should be(2)
   }
 }

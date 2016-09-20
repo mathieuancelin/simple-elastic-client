@@ -18,14 +18,30 @@ private object ClientHolder {
   val empty = "".getBytes("UTF-8")
 }
 
-private trait Method
-private object GET extends Method
-private object PUT extends Method
-private object POST extends Method
-private object DELETE extends Method
-private object PATCH extends Method
-private object HEAD extends Method
-private object OPTIONS extends Method
+private trait Method {
+  def name: String
+}
+private object GET extends Method {
+  def name: String = "GET"
+}
+private object PUT extends Method{
+  def name: String = "PUT"
+}
+private object POST extends Method{
+  def name: String = "POST"
+}
+private object DELETE extends Method{
+  def name: String = "DELETE"
+}
+private object PATCH extends Method{
+  def name: String = "PATCH"
+}
+private object HEAD extends Method{
+  def name: String = "HEAD"
+}
+private object OPTIONS extends Method{
+  def name: String = "OPTIONS"
+}
 
 object Http {
   def hosts(hosts: Seq[String])(implicit client: OkHttpClient = ClientHolder.client): RequestHolder = new RequestHolder(
