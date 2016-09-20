@@ -31,8 +31,8 @@ class SimpleElasticClientSpec extends FlatSpec with Matchers {
 
     val values = for {
       client  <- ElasticClient.local(port).future()
-      // client  <- ElasticClient.remote("host1.elastic.cluster:9200" :: "host2.elastic.cluster:9200" :: Nil).future()
       // or use the remote client with multi-hosts and retries
+      // client  <- ElasticClient.remote("host1.elastic.cluster:9200" :: "host2.elastic.cluster:9200" :: Nil).future()
       _       <- client createIndex "places" withSettings Json.obj(
         "settings" -> Json.obj(
           "index" -> Json.obj(
