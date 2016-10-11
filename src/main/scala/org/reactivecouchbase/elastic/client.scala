@@ -132,6 +132,9 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
   def bulk(index: Option[String], typ: Option[String])(operations: JsArray)(implicit ec: ExecutionContext) =
     performRequest(s"/${index.getOrElse("")}/${typ.getOrElse("")}/_bulk", POST, Some(operations))
 
+  def bulkSeq(index: Option[String], typ: Option[String])(operations: Seq[JsValue])(implicit ec: ExecutionContext) =
+    performRequest(s"/${index.getOrElse("")}/${typ.getOrElse("")}/_bulk", POST, Some(JsArray(operations)))
+
   // Indexes
   def putIndex(index: String, settings: Option[JsObject] = None)(implicit ec: ExecutionContext) =
     performRequest(s"/$index", PUT, settings)
@@ -225,6 +228,7 @@ class SelectedIndex(index: String, cli: ElasticClient) {
   def uriSearch(params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.uriSearch(index, None)(params:_*)(ec)
   def suggest(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.suggest(index)(query)(ec)
   def bulk(operations: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulk(Some(index), None)(operations)(ec)
+  def bulk(operations: Seq[JsValue])(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulkSeq(Some(index), None)(operations)(ec)
   def deleteIndex(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteIndex(index)(ec)
   def refresh(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.refresh(index)(ec)
   def flush(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.flush(index)(ec)
@@ -252,6 +256,7 @@ class SelectedType(index: String, typ: String, cli: ElasticClient) {
   def uriSearch(params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.uriSearch(index, Some(typ))(params:_*)(ec)
   def suggest(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.suggest(index)(query)(ec)
   def bulk(operations: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulk(Some(index), Some(typ))(operations)(ec)
+  def bulk(operations: Seq[JsValue])(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulkSeq(Some(index), Some(typ))(operations)(ec)
   def deleteIndex(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteIndex(index)(ec)
   def refresh(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.refresh(index)(ec)
   def flush(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.flush(index)(ec)
