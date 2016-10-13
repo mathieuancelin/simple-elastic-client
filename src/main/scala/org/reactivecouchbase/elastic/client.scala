@@ -157,6 +157,9 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
   def putMapping(indexes: Seq[String], typ: String, ignoreConflicts: Boolean = false)(mapping: JsObject)(implicit ec: ExecutionContext) =
     performRequest(s"/${indexes.mkString(",")}/_mapping/$typ", PUT, Some(mapping), Seq("ignore_conflicts" -> ignoreConflicts.toString))
 
+  def putMapping(index: String)(mapping: JsObject)(implicit ec: ExecutionContext) =
+    performRequest(s"/$index", POST, Some(mapping))
+
   // Templates
   def putTemplate(index: String)(template: JsObject)(implicit ec: ExecutionContext) =
     performRequest(s"/_template/$index", PUT, Some(template))

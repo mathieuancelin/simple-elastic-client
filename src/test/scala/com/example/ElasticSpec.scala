@@ -55,6 +55,78 @@ class ElasticSpec extends FlatSpec with Matchers {
     embedded.stop()
   }
 
+  "ElasticClient" should "be able to create index during put mapping" in {
+    val port = Network.freePort
+    val embedded = new EmbeddedElastic(Some(port))
+
+    implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
+    val values = for {
+      client <- ElasticClient.local(port).future()
+      _ <- client.putMapping("places")(
+        Json.obj(
+          "mappings" -> Json.obj(
+            "cities" -> Json.obj(
+              "properties" -> Json.obj(
+                "name" -> Json.obj(
+                  "type" -> "string",
+                  "index" -> "not_analyzed"
+                ),
+                "country" -> Json.obj(
+                  "type" -> "string",
+                  "index" -> "not_analyzed"
+                ),
+                "continent" -> Json.obj(
+                  "type" -> "string",
+                  "index" -> "not_analyzed"
+                ),
+                "status" -> Json.obj(
+                  "type" -> "string",
+                  "index" -> "not_analyzed"
+                )
+              )
+            )
+          )
+        )
+      )
+      cities  <- client / "places" / "cities" future()
+      _       <- cities index Json.obj(
+        "name"      -> "Glasgow",
+        "country"   -> "United Kingdom",
+        "continent" -> "Scotland",
+        "status"    -> "Such Wow"
+      )
+      _       <- cities index Json.obj(
+        "name"      -> "London",
+        "country"   -> "United Kingdom",
+        "continent" -> "Europe",
+        "status"    -> "Awesome"
+      )
+      _       <- Timeout.timeout(Duration("2s"))
+      lSearch <- cities search Json.obj("query" -> Json.obj("term" -> Json.obj("name" -> "London")))
+      gSearch <- cities search Json.obj("query" -> Json.obj("term" -> Json.obj("name" -> "Glasgow")))
+      london  <- lSearch.future().mapFirstHit(d => d \ "_source")
+      glasgow <- gSearch.future().mapFirstHit(d => d \ "_source")
+      all     <- cities search Json.obj() map (_.hitsSeq)
+    } yield (london, glasgow, all)
+
+    val (london, glasgow, all) = Await.result(values, Duration("10s"))
+
+    embedded.stop()
+
+    (london \ "name").as[String] should be("London")
+    (london \ "country").as[String] should be("United Kingdom")
+    (london \ "continent").as[String] should be("Europe")
+    (london \ "status").as[String] should be("Awesome")
+
+    (glasgow \ "name").as[String] should be("Glasgow")
+    (glasgow \ "country").as[String] should be("United Kingdom")
+    (glasgow \ "continent").as[String] should be("Scotland")
+    (glasgow \ "status").as[String] should be("Such Wow")
+
+    all.size should be(2)
+
+  }
+
   "ElasticClient" should "be able to search an ES server" in {
 
     val port = Network.freePort
