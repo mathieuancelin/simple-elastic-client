@@ -135,6 +135,7 @@ trait ElasticClient {
 
   def mapping(indexes: Seq[String], types: Seq[String])(implicit ec: ExecutionContext): Future[ElasticResponse]
   def putMapping(indexes: Seq[String], typ: String, ignoreConflicts: Boolean)(mapping: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse]
+  def putMapping(index: String)(mapping: JsObject)(implicit ec: ExecutionContext)
   def putTemplate(index: String)(template: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse]
 
   def template(index: String, name: String)(implicit ec: ExecutionContext): Future[ElasticResponse]
