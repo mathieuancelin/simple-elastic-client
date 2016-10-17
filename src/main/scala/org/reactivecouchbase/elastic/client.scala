@@ -1,5 +1,7 @@
 package org.reactivecouchbase.elastic
 
+import akka.stream.Materializer
+import akka.stream.scaladsl.Source
 import okhttp3.Response
 import org.slf4j.LoggerFactory
 import play.api.libs.json._
@@ -132,8 +134,14 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
   def bulk(index: Option[String], typ: Option[String])(operations: JsArray)(implicit ec: ExecutionContext) =
     performRequest(s"/${index.getOrElse("")}/${typ.getOrElse("")}/_bulk", POST, Some(operations))
 
-  def bulkSeq(index: Option[String], typ: Option[String])(operations: Seq[JsValue])(implicit ec: ExecutionContext) =
+  def bulkFromSeq(index: Option[String], typ: Option[String])(operations: Seq[JsValue])(implicit ec: ExecutionContext) =
     performRequest(s"/${index.getOrElse("")}/${typ.getOrElse("")}/_bulk", POST, Some(JsArray(operations)))
+
+  def bulkFromSource(index: Option[String], typ: Option[String])(operations: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materialize: Materializer) = {
+    operations
+      .grouped(batchEvery)
+      .runFoldAsync(Seq.empty[ElasticResponse])((finalSeq, seq) => bulkFromSeq(index, typ)(seq).map(e => finalSeq :+ e))
+  }
 
   // Indexes
   def putIndex(index: String, settings: Option[JsObject] = None)(implicit ec: ExecutionContext) =
@@ -213,6 +221,7 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
 object ElasticClient {
   private val defaultTimeout = Duration("10s")
   private val defaultRetry = 5
+  val BATCH_EVERY = 1000
   def local: ElasticClient = new ElasticClient(Seq("localhost:9200"), defaultTimeout, defaultRetry)
   def local(port: Int): ElasticClient = new ElasticClient(Seq(s"localhost:$port"), defaultTimeout, defaultRetry)
   def remote(hosts: Seq[String]): ElasticClient = new ElasticClient(hosts, defaultTimeout, defaultRetry)
@@ -231,7 +240,8 @@ class SelectedIndex(index: String, cli: ElasticClient) {
   def uriSearch(params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.uriSearch(index, None)(params:_*)(ec)
   def suggest(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.suggest(index)(query)(ec)
   def bulk(operations: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulk(Some(index), None)(operations)(ec)
-  def bulk(operations: Seq[JsValue])(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulkSeq(Some(index), None)(operations)(ec)
+  def bulk(operations: Seq[JsValue])(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulkFromSeq(Some(index), None)(operations)(ec)
+  def bulk(source: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materializer: Materializer): Future[Seq[ElasticResponse]] = cli.bulkFromSource(Some(index), None)(source, batchEvery)(ec, materializer)
   def deleteIndex(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteIndex(index)(ec)
   def refresh(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.refresh(index)(ec)
   def flush(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.flush(index)(ec)
@@ -259,7 +269,8 @@ class SelectedType(index: String, typ: String, cli: ElasticClient) {
   def uriSearch(params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.uriSearch(index, Some(typ))(params:_*)(ec)
   def suggest(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.suggest(index)(query)(ec)
   def bulk(operations: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulk(Some(index), Some(typ))(operations)(ec)
-  def bulk(operations: Seq[JsValue])(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulkSeq(Some(index), Some(typ))(operations)(ec)
+  def bulk(operations: Seq[JsValue])(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulkFromSeq(Some(index), Some(typ))(operations)(ec)
+  def bulk(source: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materializer: Materializer): Future[Seq[ElasticResponse]] = cli.bulkFromSource(Some(index), Some(typ))(source, batchEvery)(ec, materializer)
   def deleteIndex(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteIndex(index)(ec)
   def refresh(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.refresh(index)(ec)
   def flush(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.flush(index)(ec)

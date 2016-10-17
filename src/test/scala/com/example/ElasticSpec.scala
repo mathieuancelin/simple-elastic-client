@@ -2,6 +2,9 @@ package com.example
 
 import java.util.concurrent.{Executors, TimeUnit}
 
+import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.Source
 import org.reactivecouchbase.elastic.ElasticClient
 import org.scalatest._
 import play.api.libs.json.Json
@@ -107,6 +110,7 @@ class ElasticSpec extends FlatSpec with Matchers {
       london  <- lSearch.future().mapFirstHit(d => d \ "_source")
       glasgow <- gSearch.future().mapFirstHit(d => d \ "_source")
       all     <- cities search Json.obj() map (_.hitsSeq)
+      // _       <- client.bulkFromSource(None, None)(Source(1 to 100).map(v => Json.obj("value" -> v)), 10)
     } yield (london, glasgow, all)
 
     val (london, glasgow, all) = Await.result(values, Duration("10s"))
@@ -133,6 +137,8 @@ class ElasticSpec extends FlatSpec with Matchers {
     val embedded = new EmbeddedElastic(Some(port))
 
     implicit val ec = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
+    implicit val system = ActorSystem("Streams")
+    implicit val materializer = ActorMaterializer()
 
     val values = for {
       client  <- ElasticClient.local(port).future()
