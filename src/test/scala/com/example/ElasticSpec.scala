@@ -4,7 +4,6 @@ import java.util.concurrent.{Executors, TimeUnit}
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.Source
 import org.reactivecouchbase.elastic.ElasticClient
 import org.scalatest._
 import play.api.libs.json.Json

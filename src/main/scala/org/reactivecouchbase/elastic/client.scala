@@ -1,5 +1,7 @@
 package org.reactivecouchbase.elastic
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import okhttp3.Response
@@ -54,6 +56,7 @@ case class AsyncElasticResponse(response: ElasticResponse) {
 class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
 
   val logger = LoggerFactory.getLogger("ElasticClient")
+  val loggerBulk = LoggerFactory.getLogger("ElasticClientBulk")
   val httpClient = Http.hosts(hosts)
 
   def future(): Future[ElasticClient] = Future.successful(this)
@@ -138,9 +141,17 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
     performRequest(s"/${index.getOrElse("")}/${typ.getOrElse("")}/_bulk", POST, Some(JsArray(operations)))
 
   def bulkFromSource(index: Option[String], typ: Option[String])(operations: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materialize: Materializer) = {
+    val counter = new AtomicInteger(0)
     operations
       .grouped(batchEvery)
-      .runFoldAsync(Seq.empty[ElasticResponse])((finalSeq, seq) => bulkFromSeq(index, typ)(seq).map(e => finalSeq :+ e))
+      .runFoldAsync(Seq.empty[ElasticResponse])((finalSeq, seq) => {
+        val start = System.currentTimeMillis()
+        val count = counter.incrementAndGet()
+        loggerBulk.debug(s"[$count] - Will bulk ${seq.size} operations to ES")
+        bulkFromSeq(index, typ)(seq).map(e => finalSeq :+ e).andThen {
+          case _ => loggerBulk.debug(s"[$count] - Bulk done in ${System.currentTimeMillis() - start} milliseconds")
+        }
+      })
   }
 
   // Indexes
