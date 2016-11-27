@@ -2,8 +2,9 @@ package org.reactivecouchbase.elastic
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 
+import akka.NotUsed
 import akka.stream.Materializer
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Flow, GraphApply, Sink, Source}
 import okhttp3.Response
 import org.slf4j.LoggerFactory
 import play.api.libs.json._
@@ -140,35 +141,54 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
   def bulkFromSeq(index: Option[String], typ: Option[String])(operations: Seq[JsValue])(implicit ec: ExecutionContext): Future[ElasticResponse] =
     performRequest(s"/${index.getOrElse("")}/${typ.getOrElse("")}/_bulk", POST, Some(JsArray(operations)))
 
-  def bulkFromSourceWithResponses(index: Option[String], typ: Option[String])(operations: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materialize: Materializer) = {
-    val counter = new AtomicInteger(0)
-    operations
+  def bulkFlow(index: Option[String], typ: Option[String], batchEvery: Int = ElasticClient.BATCH_EVERY, parallelism: Int = 10): Flow[JsValue, ElasticResponse, NotUsed] = {
+    val counter = new AtomicLong(0L)
+    Flow[JsValue]
       .grouped(batchEvery)
-      .runFoldAsync(Seq.empty[ElasticResponse])((finalSeq, seq) => {
+      .mapAsync(parallelism) { seq =>
         val start = System.currentTimeMillis()
         val count = counter.incrementAndGet()
         loggerBulk.debug(s"[$count] - Will bulk ${seq.size} operations to ES")
-        bulkFromSeq(index, typ)(seq).map(e => finalSeq :+ e).andThen {
+        bulkFromSeq(index, typ)(seq).andThen {
           case _ => loggerBulk.debug(s"[$count] - Bulk done in ${System.currentTimeMillis() - start} milliseconds")
         }
-      })
+      }
+  }
+
+  def bulkFromSourceWithResponses(index: Option[String], typ: Option[String])(operations: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materialize: Materializer) = {
+    operations.via(bulkFlow(index, typ)).runFold(Seq.empty[ElasticResponse])((a, b) => a :+ b)
+    // val counter = new AtomicInteger(0)
+    // operations
+    //   .grouped(batchEvery)
+    //   .runFoldAsync(Seq.empty[ElasticResponse])((finalSeq, seq) => {
+    //     val start = System.currentTimeMillis()
+    //     val count = counter.incrementAndGet()
+    //     loggerBulk.debug(s"[$count] - Will bulk ${seq.size} operations to ES")
+    //     bulkFromSeq(index, typ)(seq).map(e => finalSeq :+ e).andThen {
+    //       case _ => loggerBulk.debug(s"[$count] - Bulk done in ${System.currentTimeMillis() - start} milliseconds")
+    //     }
+    //   })
   }
 
   def bulkFromSource(index: Option[String], typ: Option[String])(operations: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materialize: Materializer): Future[Long] = {
-    val counter = new AtomicInteger(0)
-    operations
-      .grouped(batchEvery)
-      .runFoldAsync(0L)((count, seq) => {
-        val start = System.currentTimeMillis()
-        val currentCount = counter.incrementAndGet()
-        loggerBulk.debug(s"[$currentCount] - Will bulk ${seq.size} operations to ES")
-        bulkFromSeq(index, typ)(seq).map {
-          case e if e.isError => count
-          case e => count + 1L
-        }.andThen {
-          case _ => loggerBulk.debug(s"[$currentCount] - Bulk done in ${System.currentTimeMillis() - start} milliseconds")
-        }
-      })
+    operations.via(bulkFlow(index, typ)).runFold(0L)((a, b) => b match {
+      case e if e.isError => a
+      case e => a + 1L
+    })
+    // val counter = new AtomicInteger(0)
+    // operations
+    //   .grouped(batchEvery)
+    //   .runFoldAsync(0L)((count, seq) => {
+    //     val start = System.currentTimeMillis()
+    //     val currentCount = counter.incrementAndGet()
+    //     loggerBulk.debug(s"[$currentCount] - Will bulk ${seq.size} operations to ES")
+    //     bulkFromSeq(index, typ)(seq).map {
+    //       case e if e.isError => count
+    //       case e => count + 1L
+    //     }.andThen {
+    //       case _ => loggerBulk.debug(s"[$currentCount] - Bulk done in ${System.currentTimeMillis() - start} milliseconds")
+    //     }
+    //   })
   }
 
   // Indexes
@@ -269,6 +289,7 @@ class SelectedIndex(index: String, cli: ElasticClient) {
   def suggest(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.suggest(index)(query)(ec)
   def bulk(operations: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulk(Some(index), None)(operations)(ec)
   def bulk(operations: Seq[JsValue])(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulkFromSeq(Some(index), None)(operations)(ec)
+  def bulkFlow(batchEvery: Int = ElasticClient.BATCH_EVERY, parallelism: Int = 10)(implicit ec: ExecutionContext, materializer: Materializer): Flow[JsValue, ElasticResponse, NotUsed] = cli.bulkFlow(Some(index), None, batchEvery, parallelism)
   def bulk(source: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materializer: Materializer): Future[Long] = cli.bulkFromSource(Some(index), None)(source, batchEvery)(ec, materializer)
   def bulkWithResponses(source: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materializer: Materializer): Future[Seq[ElasticResponse]] = cli.bulkFromSourceWithResponses(Some(index), None)(source, batchEvery)(ec, materializer)
   def deleteIndex(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteIndex(index)(ec)
@@ -299,6 +320,7 @@ class SelectedType(index: String, typ: String, cli: ElasticClient) {
   def suggest(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.suggest(index)(query)(ec)
   def bulk(operations: JsArray)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulk(Some(index), Some(typ))(operations)(ec)
   def bulk(operations: Seq[JsValue])(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.bulkFromSeq(Some(index), Some(typ))(operations)(ec)
+  def bulkFlow(batchEvery: Int = ElasticClient.BATCH_EVERY, parallelism: Int = 10)(implicit ec: ExecutionContext, materializer: Materializer): Flow[JsValue, ElasticResponse, NotUsed] = cli.bulkFlow(Some(index), Some(typ), batchEvery, parallelism)
   def bulk(source: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materializer: Materializer): Future[Long] = cli.bulkFromSource(Some(index), Some(typ))(source, batchEvery)(ec, materializer)
   def bulkWithResponses(source: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materializer: Materializer): Future[Seq[ElasticResponse]] = cli.bulkFromSourceWithResponses(Some(index), Some(typ))(source, batchEvery)(ec, materializer)
   def deleteIndex(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.deleteIndex(index)(ec)
