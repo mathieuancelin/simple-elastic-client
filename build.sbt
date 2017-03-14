@@ -1,16 +1,16 @@
 name := """simple-elastic-client"""
 organization := "org.reactivecouchbase"
-version := "1.1.3-SNAPSHOT"
+version := "1.1.3"
 scalaVersion := "2.11.8"
 crossScalaVersions := Seq("2.10.4", "2.11.8")
 
 libraryDependencies ++= Seq(
-  "com.typesafe.play" %% "play-json" % "2.5.7",
-  "ch.qos.logback" % "logback-classic" % "1.1.3",
-  "com.squareup.okhttp3" % "okhttp" % "3.4.1",
-  "com.typesafe.akka" %% "akka-stream" % "2.4.11",
+  "com.typesafe.play" %% "play-json" % "2.5.13",
+  "ch.qos.logback" % "logback-classic" % "1.2.1",
+  "com.squareup.okhttp3" % "okhttp" % "3.6.0",
+  "com.typesafe.akka" %% "akka-stream" % "2.4.17",
 
-"org.scalatest" %% "scalatest" % "2.2.4" % "test",
+  "org.scalatest" %% "scalatest" % "2.2.4" % "test",
   "org.elasticsearch" % "elasticsearch" % "2.3.2" % "test",
   "com.github.spullara.mustache.java" % "compiler" % "0.9.3" % "test",
   "net.java.dev.jna" % "jna" % "4.1.0" % "test"
