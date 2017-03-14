@@ -12,6 +12,8 @@ import play.api.libs.json._
 import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, Future}
 
+case class Auth(user: String, password: String)
+
 trait ElasticResponseResult
 case class ElasticResponseSuccess(rawResponse: JsObject) extends ElasticResponseResult
 case class ElasticResponseFailure(error: JsObject) extends ElasticResponseResult
@@ -54,11 +56,13 @@ case class AsyncElasticResponse(response: ElasticResponse) {
   def fold[T](f: ElasticResponseResult => T): Future[T] = Future.successful(response.fold(f))
 }
 
-class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int) {
+class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int, auth: Option[Auth] = None) {
 
   val logger = LoggerFactory.getLogger("ElasticClient")
   val loggerBulk = LoggerFactory.getLogger("ElasticClientBulk")
-  val httpClient = Http.hosts(hosts)
+  val httpClient = auth.map(a => Http.hosts(hosts).withAuth(a.user, a.password)).getOrElse(Http.hosts(hosts))
+
+  def withAuth(auth: Auth) = new ElasticClient(hosts, timeout, retry, Some(auth))
 
   def future(): Future[ElasticClient] = Future.successful(this)
 
