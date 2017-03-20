@@ -160,7 +160,7 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int, auth: Opt
   }
 
   def bulkFromSourceWithResponses(index: Option[String], typ: Option[String])(operations: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materialize: Materializer) = {
-    operations.via(bulkFlow(index, typ)(ec)).runFold(Seq.empty[ElasticResponse])((a, b) => a :+ b)
+    operations.via(bulkFlow(index, typ, batchEvery)(ec)).runFold(Seq.empty[ElasticResponse])((a, b) => a :+ b)
     // val counter = new AtomicInteger(0)
     // operations
     //   .grouped(batchEvery)
@@ -175,7 +175,7 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int, auth: Opt
   }
 
   def bulkFromSource(index: Option[String], typ: Option[String])(operations: Source[JsValue, _], batchEvery: Int = ElasticClient.BATCH_EVERY)(implicit ec: ExecutionContext, materialize: Materializer): Future[Long] = {
-    operations.via(bulkFlow(index, typ)(ec)).runFold(0L)((a, b) => b match {
+    operations.via(bulkFlow(index, typ, batchEvery)(ec)).runFold(0L)((a, b) => b match {
       case e if e.isError => a
       case e => a + 1L
     })
