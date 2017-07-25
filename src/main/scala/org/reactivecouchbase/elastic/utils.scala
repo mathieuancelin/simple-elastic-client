@@ -251,9 +251,9 @@ object CircuitBreakerHealth {
     }
 
     def getValues: List[T] = {
-      import collection.JavaConversions._
+      import collection.JavaConverters._
       trim()
-      measurements.values.toList
+      measurements.values.asScala.toList
     }
 
     private def getTick: Long = {
