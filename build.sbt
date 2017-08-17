@@ -1,6 +1,6 @@
 name := """simple-elastic-client"""
 organization := "org.reactivecouchbase"
-version := "1.1.6-SNAPSHOT"
+version := "1.1.6"
 scalaVersion := "2.12.2"
 crossScalaVersions := Seq("2.11.11", "2.12.2")
 scalacOptions += "-deprecation"
