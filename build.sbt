@@ -13,7 +13,10 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-stream" % "2.5.3",
 
   "org.scalatest" %% "scalatest" % "3.0.3" % "test",
-  "org.elasticsearch" % "elasticsearch" % "2.3.2" % "test",
+  "org.elasticsearch" % "elasticsearch" % "5.2.0" % "test",
+  "org.elasticsearch.client" % "transport" % "5.2.0" % "test",
+  "org.apache.logging.log4j" % "log4j-api" % "2.7" % "test",
+  "org.apache.logging.log4j" % "log4j-core" % "2.7" % "test",
   "com.github.spullara.mustache.java" % "compiler" % "0.9.5" % "test",
   "net.java.dev.jna" % "jna" % "4.4.0" % "test"
 )

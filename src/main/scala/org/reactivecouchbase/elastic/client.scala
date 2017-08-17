@@ -218,7 +218,7 @@ class ElasticClient(hosts: Seq[String], timeout: Duration, retry: Int, auth: Opt
     performRequest(s"/${indexes.mkString(",")}/_mapping/$typ", PUT, Some(mapping), Seq("ignore_conflicts" -> ignoreConflicts.toString))
 
   def putMapping(index: String)(mapping: JsObject)(implicit ec: ExecutionContext) =
-    performRequest(s"/$index", POST, Some(mapping))
+    performRequest(s"/$index", PUT, Some(mapping))
 
   // Templates
   def putTemplate(index: String)(template: JsObject)(implicit ec: ExecutionContext) =
@@ -317,7 +317,7 @@ class SelectedType(index: String, typ: String, cli: ElasticClient) {
   def delete(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.delete(index, typ)(query)(ec)
   def get(id: String)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.get(index, typ, id)(ec)
   def get(query: JsObject)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.get(index, typ)(query)(ec)
-  def index(doc: JsValue, refresh: Boolean = true)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, None, refresh)(doc)(ec)
+  def index(doc: JsValue, refresh: Boolean = false)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, None, refresh)(doc)(ec)
   def indexWithId(id: String, refresh: Boolean = false)(doc: JsValue)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.index(index, typ, Some(id), refresh)(doc)(ec)
   def search(query: JsObject, params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.search(index, Some(typ))(query, params:_*)(ec)
   def uriSearch(params: (String, String)*)(implicit ec: ExecutionContext): Future[ElasticResponse] = cli.uriSearch(index, Some(typ))(params:_*)(ec)
