@@ -172,10 +172,11 @@ case class RequestHolder(
     logger.debug(s"Use Elastic host : $theUrl")
     val urlWithPart = theUrl + parts.mkString("/").replace("//", "/")
     val finalUrl = params match {
-      case p if p.nonEmpty && urlWithPart.contains("?") => urlWithPart + "&" + params.map(t => (t._1, URLEncoder.encode(t._2, "UTF-8"))).mkString("&")
-      case p if p.nonEmpty => urlWithPart + "?" + params.map(t => (t._1, URLEncoder.encode(t._2, "UTF-8"))).mkString("&")
+      case p if p.nonEmpty && urlWithPart.contains("?") => urlWithPart + "&" + params.map(t => s"${t._1}=${URLEncoder.encode(t._2, "UTF-8")}").mkString("&")
+      case p if p.nonEmpty => urlWithPart + "?" + params.map(t => s"${t._1}=${URLEncoder.encode(t._2, "UTF-8")}").mkString("&")
       case p => urlWithPart
     }
+    logger.debug(s"Verb and URL used : ${method.name} $finalUrl")
     builder = builder.url(finalUrl)
     val rb: RequestBody =  rbody.getOrElse(RequestBody.create(MediaType.parse(media), body.getOrElse(ClientHolder.empty)))
     method match {
